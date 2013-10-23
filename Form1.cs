@@ -6,17 +6,22 @@ using System.Drawing;
 using System.Text;
 using System.Windows.Forms;
 using System.Globalization;
+using System.Security.Cryptography;
+using System.IO;
+using System.Windows;
 
 namespace YSP_AES_tool
 {
     public partial class FormAEStool : Form
     {
-        private enum AesMode { Hex, Plaintext};
-        private AesMode aes_mode;
-        private AesLib.Aes aes = null;
+        //private enum AesMode { Hex, Plaintext};
+        //private AesMode aes_mode;
+        //private AesLib.Aes aes = null;
+        private AesManaged myAes = null;
         private byte[] key = null;
+        private byte[] iv = null;
         private byte[] plaintext = null;
-        private byte[] ciphertext = null;
+        //private byte[] ciphertext = null;
 
         public FormAEStool()
         {
@@ -25,55 +30,27 @@ namespace YSP_AES_tool
 
         private void FormAEStool_Load(object sender, EventArgs e)
         {
-            aes_mode = AesMode.Hex;
-
             plaintext = hexStringToBytes(textBoxPlaintext.Text);
 
             key = hexStringToBytes(textBoxKey.Text);
-            
-            ciphertext = new byte[16];           
-        }
 
-        private void textBoxPlaintext_TextChanged(object sender, EventArgs e)
-        {
-            if (aes_mode == AesMode.Hex)
-            {
-                plaintext = hexStringToBytes(textBoxPlaintext.Text);
-            }
-            else if (aes_mode == AesMode.Plaintext)
-            {
-                plaintext = Encoding.ASCII.GetBytes(textBoxPlaintext.Text);
-            }
-        }
+            iv = hexStringToBytes(textBoxIV.Text);
 
-        private void textBoxKey_TextChanged(object sender, EventArgs e)
-        {
-            if (aes_mode == AesMode.Hex)
-            {
-                key = hexStringToBytes(textBoxKey.Text);
-            }
-            else if (aes_mode == AesMode.Plaintext)
-            {
-                key = Encoding.ASCII.GetBytes(textBoxKey.Text);
-            }
+            //aes_mode = AesMode.Hex;
+            myAes = new AesManaged();
+            myAes.BlockSize = 128;
+            myAes.KeySize = 128;
+            myAes.Key = key;
+            myAes.IV = iv;
+            myAes.Mode = CipherMode.CBC;
+            myAes.Padding = PaddingMode.None;
+
+            //ciphertext = new byte[plaintext.Length];           
         }
 
         private void buttonEncrypt_Click(object sender, EventArgs e)
         {
-            if (key == null || key.Length <= 0)
-            {
-                MessageBox.Show("Key can not be empty!");
-
-                return;
-            }
-
-            if (key.Length != 16 && key.Length != 24 && key.Length != 32)
-            {
-                MessageBox.Show("Key size of AES standard is 128, 192, and 256 bit. Please check your key size!");
-
-                return;
-            }
-
+            plaintext = hexStringToBytes(textBoxPlaintext.Text);
             if (plaintext == null || plaintext.Length <= 0)
             {
                 MessageBox.Show("Plaintext can not be empty!");
@@ -88,47 +65,78 @@ namespace YSP_AES_tool
                 return;
             }
 
+            key = hexStringToBytes(textBoxKey.Text);
+            if (key == null || key.Length <= 0)
+            {
+                MessageBox.Show("Key can not be empty!");
+
+                return;
+            }
+
+            if (key.Length != 16 && key.Length != 24 && key.Length != 32)
+            {
+                MessageBox.Show("Key size of AES standard is 128, 192, and 256 bit. Please check your key size!");
+
+                return;
+            }
+
+            iv = hexStringToBytes(textBoxIV.Text);
+            if (iv == null || iv.Length <= 0)
+            {
+                MessageBox.Show("IV can not be empty!");
+
+                return;
+            }
+
+            if (iv.Length != 16)
+            {
+                MessageBox.Show("IV size of AES standard is 128 bit. Please check your IV size!");
+
+                return;
+            }
+
+            myAes.BlockSize = 128;
+            switch (key.Length)
+            {
+                case 16:
+                    myAes.KeySize = 128;
+                    break;
+                case 24:
+                    myAes.KeySize = 192;
+                    break;
+                case 32:
+                    myAes.KeySize = 256;
+                    break;
+                default:
+                    break;
+            }
+            myAes.Key = key;
+            myAes.IV = iv;
+            myAes.Mode = CipherMode.CBC;
+            myAes.Padding = PaddingMode.None;
+
             try
             {
-                switch (key.Length)
-                {
-                    case 16:
-                        aes = new AesLib.Aes(AesLib.Aes.KeySize.Bits128, key);
-                        break;
-                    case 24:
-                        aes = new AesLib.Aes(AesLib.Aes.KeySize.Bits192, key);
-                        break;
-                    case 32:
-                        aes = new AesLib.Aes(AesLib.Aes.KeySize.Bits256, key);
-                        break;
-                    default:
-                        break;
-                }
+                // Create a decrytor to perform the stream transform.
+                ICryptoTransform encryptor = myAes.CreateEncryptor(myAes.Key, myAes.IV);
 
-                if (aes != null)
+                // Create the streams used for encryption.
+                using (MemoryStream msEncrypt = new MemoryStream())
                 {
-                    aes.Cipher(plaintext, ciphertext);
+                    using (CryptoStream csEncrypt = new CryptoStream(msEncrypt, encryptor, CryptoStreamMode.Write))
+                    {
+                        for (int i = 0; i < plaintext.Length;i++ )
+                        {
+                            csEncrypt.WriteByte(plaintext[i]);
+                        }
+                        //csEncrypt.FlushFinalBlock();
+                        textBoxCiphertext.Text = bytesToHexString(msEncrypt.ToArray());
+                    }
                 }
             }
             catch (System.Exception ex)
             {
                 MessageBox.Show(ex.Message);
-            }
-            finally
-            {
-                if (ciphertext != null)
-                {
-                    /*if (aes_mode == AesMode.Hex)
-                    {
-                        textBoxCiphertext.Text = bytesToHexString(ciphertext);
-                    }
-                    else if (aes_mode == AesMode.Plaintext)
-                    {
-                        textBoxCiphertext.Text = Encoding.ASCII.GetString(ciphertext);
-                    }*/
-
-                    textBoxCiphertext.Text = bytesToHexString(ciphertext);
-                }
             }
         }
 
@@ -172,20 +180,7 @@ namespace YSP_AES_tool
 
         private void buttonDecrypt_Click(object sender, EventArgs e)
         {
-            if (key == null || key.Length <= 0)
-            {
-                MessageBox.Show("Key can not be empty!");
-
-                return;
-            }
-
-            if (key.Length != 16 && key.Length != 24 && key.Length != 32)
-            {
-                MessageBox.Show("Key size of AES standard is 128, 192, and 256 bit. Please check your key size!");
-
-                return;
-            }
-
+            plaintext = hexStringToBytes(textBoxPlaintext.Text);
             if (plaintext == null || plaintext.Length <= 0)
             {
                 MessageBox.Show("Plaintext can not be empty!");
@@ -200,66 +195,101 @@ namespace YSP_AES_tool
                 return;
             }
 
+            key = hexStringToBytes(textBoxKey.Text);
+            if (key == null || key.Length <= 0)
+            {
+                MessageBox.Show("Key can not be empty!");
+
+                return;
+            }
+
+            if (key.Length != 16 && key.Length != 24 && key.Length != 32)
+            {
+                MessageBox.Show("Key size of AES standard is 128, 192, and 256 bit. Please check your key size!");
+
+                return;
+            }
+
+            iv = hexStringToBytes(textBoxIV.Text);
+            if (iv == null || iv.Length <= 0)
+            {
+                MessageBox.Show("IV can not be empty!");
+
+                return;
+            }
+
+            if (iv.Length != 16)
+            {
+                MessageBox.Show("IV size of AES standard is 128 bit. Please check your IV size!");
+
+                return;
+            }
+
+            myAes.BlockSize = 128;
+            switch (key.Length)
+            {
+                case 16:
+                    myAes.KeySize = 128;
+                    break;
+                case 24:
+                    myAes.KeySize = 192;
+                    break;
+                case 32:
+                    myAes.KeySize = 256;
+                    break;
+                default:
+                    break;
+            }
+            myAes.Key = key;
+            myAes.IV = iv;
+            myAes.Mode = CipherMode.CBC;
+            myAes.Padding = PaddingMode.None;
+
             try
             {
-                switch (key.Length)
-                {
-                    case 16:
-                        aes = new AesLib.Aes(AesLib.Aes.KeySize.Bits128, key);
-                        break;
-                    case 24:
-                        aes = new AesLib.Aes(AesLib.Aes.KeySize.Bits192, key);
-                        break;
-                    case 32:
-                        aes = new AesLib.Aes(AesLib.Aes.KeySize.Bits256, key);
-                        break;
-                    default:
-                        break;
-                }
+                // Create a decrytor to perform the stream transform.
+                ICryptoTransform decryptor = myAes.CreateDecryptor(myAes.Key, myAes.IV);
 
-                if (aes != null)
+                // Create the streams used for encryption.
+                using (MemoryStream msDecrypt = new MemoryStream(plaintext))
                 {
-                    aes.InvCipher(plaintext, ciphertext);
+                    using (CryptoStream csDecrypt = new CryptoStream(msDecrypt, decryptor, CryptoStreamMode.Read))
+                    {
+                        byte[] ciphertext = new byte[plaintext.Length];
+
+                        csDecrypt.Read(ciphertext, 0, ciphertext.Length);
+                        textBoxCiphertext.Text = bytesToHexString(ciphertext);
+                    }
                 }
             }
             catch (System.Exception ex)
             {
                 MessageBox.Show(ex.Message);
             }
-            finally
-            {
-                if (ciphertext != null)
-                {
-                    /*if (aes_mode == AesMode.Hex)
-                    {
-                        textBoxCiphertext.Text = bytesToHexString(ciphertext);
-                    }
-                    else if (aes_mode == AesMode.Plaintext)
-                    {
-                        textBoxCiphertext.Text = Encoding.ASCII.GetString(ciphertext);
-                    }*/
+        }
 
-                    textBoxCiphertext.Text = bytesToHexString(ciphertext);
-                }
+        private void textBoxIV_TextChanged(object sender, EventArgs e)
+        {
+            iv = hexStringToBytes(textBoxIV.Text);
+        }
+
+        private void buttonCompare_Click(object sender, EventArgs e)
+        {
+            if (String.Compare(textBoxCiphertext.Text, textBoxComparison.Text, StringComparison.OrdinalIgnoreCase) == 0)
+            {
+                MessageBox.Show("Same!");
+            }
+            else
+            {
+                MessageBox.Show("Not the same!", "Error", MessageBoxButtons.OK, MessageBoxIcon.Error);
             }
         }
 
-        private void radioButton1_Click(object sender, EventArgs e)
+        private void buttonHelp_Click(object sender, EventArgs e)
         {
-            aes_mode = AesMode.Hex;
-
-            plaintext = hexStringToBytes(textBoxPlaintext.Text);
-
-            key = hexStringToBytes(textBoxKey.Text);
-        }
-
-        private void radioButton2_Click(object sender, EventArgs e)
-        {
-            aes_mode = AesMode.Plaintext;
-
-            plaintext = Encoding.ASCII.GetBytes(textBoxPlaintext.Text);
-
-            key = Encoding.ASCII.GetBytes(textBoxKey.Text);
+            string messageBoxText = "It is only for CBC mode.\nAll the data are in hex format. For example, \"00112233\" actually is \"0x00 0x11 0x22 0x33\"\n\nIV should be \"00000000000000000000000000000000\" when basic AES is operated. Otherwise, IV has 128 bit of fixed size.\n\nYou can compare the encryption/decryption result by copy the expected string into \"Comparison Ciphertext\"";
+            string caption = "Help";
+            MessageBox.Show(messageBoxText, caption, MessageBoxButtons.OK, MessageBoxIcon.Information);
         }
     }
 }
